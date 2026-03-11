@@ -1,0 +1,75 @@
+ticket_text,severity
+"Sistema parado, máquina não inicializa, indisponibilidade total",High
+"Falha crítica de equipamento, emergência de produção",High
+"Servidor down, todos os clientes afetados",High
+"Erro crítico no sistema de faturamento, nada funciona",High
+"Aplicação offline, unidade produtiva parada",High
+"Erro 500 persistente no dashboard, não consigo acessar",Medium
+"Relatório lento e com timeout intermitente",Medium
+"Performance degradada, consultasome demora 10 minutos",Medium
+"Falha intermitente de conexão, cliente reclama",Medium
+"Dados inconsistentes no relatório de vendas",Medium
+"Dúvida no uso da funcionalidade, orientação de senha",Low
+"Como resetar a senha do usuário?",Low
+"Solicitação de ajuste em layout de campo",Low
+"Documentação sobre como usar o módulo X",Low
+"Ajuda para configurar integração com terceira parte",Low
+"Prototipo do novo campo no sistema",Low
+"Erro ao fazer login, credenciais não funcionam",Medium
+"Sistema lento após atualização, verificar índices",Medium
+"Banco de dados cheio, sem espaço livre",High
+"Falha na sincronização com API externa",Medium
+"Widget não carrega, preciso de orientação",Low
+"Cliente não consegue acessar portal de autosserviço",High
+"Firewall bloqueando conexão, urgente",High
+"Relatório não gera corretamente, valores incorretos",Medium
+"Interface congelada, programa não responde",High
+"Problema ao imprimir documentosfiscais, máquina offline",Medium
+"Como exportar dados para Excel?",Low
+"Dúvida sobre configuração de backup",Low
+"Certificado SSL venceu, site fora do ar",High
+"E-mail de notificação não enviado, verificar SMTP",Medium
+"Melhorar documentação do API",Low
+"Usuário bloqueado por múltiplas tentativas de login",Low
+"Corrupção de dados no cache, limpar imediatamente",High
+"Falha ao processar arquivo de importação em lote",Medium
+"Permissões incorretas, usuário não consegue acessar recurso",Low
+"Módulo de RH indisponível, folha de pagamento atrasada",High
+"Gráfico de vendas mostrando dados antigos",Medium
+"Como criar usuário novo no sistema?",Low
+"Processo de backup falhou, BD não sincronizou",High
+"Lag intermitente ao abrir formulário grande",Medium
+"Botão de salvar não funciona em certos casos",Medium
+"Mensagem de erro genérica sem detalhes, não consigo debugar",Medium
+"API retornando 502 Bad Gateway intermitentemente",High
+"SQL lento, query demora 30 segundos",Medium
+"Precisamos otimizar a performance da página home",Low
+"Implementar novo tipo de relatório (feature request)",Low
+"Bug: duplicação de registros ao inserir rapidamente",High
+"Limite de caracteres no campo está incorreto",Low
+"Integração com Slack não notifica mais",Medium
+"Criptografia de senha aparenta estar quebrada",High
+"Backup incrementalfalha toda noite",High
+"Cliente quer integração com novo fornecedor",Low
+"Página fica branca, erro 404 em produção",High
+"Cache não limpa, dados antigos aparecem",Medium
+"Versão do Java obsoleta causa lentidão",Medium
+"Tokens de autenticação expirando prematuramente",High
+"Tabela cresce muito, precisa particionamento",Medium
+"Histórico de transações não aparece para alguns usuários",Medium
+"Notificação push não está sendo entregue",Medium
+"Como restaurar banco de dados de um backup anterior?",Low
+"Documentação da API desatualizada",Low
+"Processo em background demora demais",Medium
+"Memória da aplicação crescendo indefinidamente",High
+"Alertas de monitoramento de CPU muito ruidosos",Low
+"Replicação do banco falhou, dados inconsistentes",High
+"UI não responsiva em dispositivo móvel",Medium
+"Link de reset de senha expirado prematuramente",Low
+"Conexão com AWS timeout intermitente",Medium
+"Log file gigante, disco quase cheio",High
+"Autenticação LDAP fora do ar, ninguém falha entrar",High
+"Balanceador de carga distribuindo tráfego mal",Medium
+"SSL certificate renewal falhou",High
+"Widget analytics não renderiza gráficos",Medium
+"Usuário admin perdeu permissão, acesso negado",High
