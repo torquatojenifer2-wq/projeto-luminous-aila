@@ -1,78 +1,117 @@
 from flask import Flask, request, jsonify
+import pandas as pd
+from sklearn.pipeline import Pipeline
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.exceptions import NotFittedError
 
 app = Flask(__name__)
 
-def suggest_action(severity, orientation):
-    """
-    Sugere a ação baseada na severidade e no contexto do chamado.
-    Foco: Reduzir visitas técnicas desnecessárias em 20%.
-    """
-    orientation = orientation.lower()
-    
+# Modelo de triagem (exemplo simples, pode adaptar para treino real em AUVO)
+def build_severity_model():
+    # Dataset de exemplo para demonstrar a pipeline
+    sample_data = [
+        ('Sistema parado, máquina não inicializa, indisponibilidade total', 'High'),
+        ('Falha crítica de equipamento, emergência', 'High'),
+        ('Erro 500 no dashboard, não consigo acessar', 'Medium'),
+        ('Relatório lento e com timeout intermitente', 'Medium'),
+        ('Dúvida no uso da funcionalidade, orientação de senha', 'Low'),
+        ('Solicitação de ajuste em layout de campo', 'Low'),
+    ]
+
+    df = pd.DataFrame(sample_data, columns=['ticket_text', 'severity'])
+
+    pipeline = Pipeline([
+        ('tfidf', TfidfVectorizer(stop_words='portuguese')),
+        ('clf', LogisticRegression(max_iter=300, random_state=42))
+    ])
+
+    pipeline.fit(df['ticket_text'], df['severity'])
+    return pipeline
+
+severity_model = build_severity_model()
+
+
+def classify_severity(ticket_text):
+    """Classifica severidade do ticket usando sklearn + pandas."""
+    if not isinstance(ticket_text, str) or ticket_text.strip() == '':
+        return 'Low', 0.0
+
+    try:
+        pred = severity_model.predict([ticket_text])[0]
+        probs = severity_model.predict_proba([ticket_text])[0]
+        confidence = float(max(probs))
+    except NotFittedError:
+        # fallback rule-based
+        low_kw = ['senha', 'icone', 'ajuda', 'configurar', 'documentação']
+        high_kw = ['urgente', 'emergência', 'critico', 'parado', 'falha', 'interrompido']
+        ticket_lower = ticket_text.lower()
+        if any(w in ticket_lower for w in high_kw):
+            pred = 'High'
+        elif any(w in ticket_lower for w in low_kw):
+            pred = 'Low'
+        else:
+            pred = 'Medium'
+        confidence = 0.55
+
+    return pred, confidence
+
+
+def suggest_action(severity, ticket_text):
+    """Sugere ação técnica de acordo com severidade e texto do chamado."""
+    txt = ticket_text.lower() if isinstance(ticket_text, str) else ''
+
+    # Regras de triagem
     if severity == 'High':
         return 'Visita Emergencial'
-    
-    # Identifica problemas que podem ser resolvidos remotamente
-    remote_keywords = ['senha', 'configurar', 'resetar', 'acesso', 'software', 'login', 'ajuda']
-    if any(kw in orientation for kw in remote_keywords) or severity == 'Low':
+
+    if any(k in txt for k in ['senha', 'login', 'configurar', 'acesso', 'documentação', 'ajuda']):
         return 'Resolução Remota'
-    
-    return 'Visita Agendada'
 
-def process_triage(entities):
-    """
-    Processa a triagem usando lógica nativa do Python (sem Pandas/NumPy).
-    """
-    results = []
-    urgent_keywords = ['urgente', 'emergencia', 'critico', 'falha', 'quebrado', 'parado']
+    if severity == 'Medium':
+        return 'Visita Agendada'
 
-    for task in entities:
-        # Extração de dados com valores padrão
-        priority = task.get('priority', 5)
-        orientation = str(task.get('orientation', '')).lower()
-        
-        # Lógica de severidade
-        if any(kw in orientation for kw in urgent_keywords) or priority <= 2:
-            severity = 'High'
-        elif priority == 3:
-            severity = 'Medium'
-        else:
-            severity = 'Low'
+    return 'Resolução Remota'
 
-        # Sugestão de ação
-        action = suggest_action(severity, orientation)
-        
-        results.append({
-            'taskID': task.get('taskID'),
-            'severity': severity,
-            'suggested_action': action,
-            'orientation': orientation
-        })
-    
-    return results
 
 @app.route('/triage', methods=['POST'])
-def triage():
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({'error': 'No JSON data provided'}), 400
+def triage_api():
+    """Endpoint que recebe JSON do n8n e retorna classificação + ação."""
+    payload = request.get_json(force=True, silent=True)
+    if not payload:
+        return jsonify({'error': 'Requisição sem JSON válido'}), 400
 
-        body = data.get('body', {})
-        entities = body.get('entities', [])
+    # Aceita formatos diferentes; adequar ao n8n
+    os_id = payload.get('os_id') or payload.get('OS_ID') or payload.get('id')
+    ticket_text = payload.get('ticket_text') or payload.get('texto_chamado') or ''
 
-        if not entities:
-            return jsonify({'error': 'No entities found in payload'}), 400
+    # Se o n8n enviar dados aninhados
+    if not ticket_text and isinstance(payload.get('data'), dict):
+        ticket_text = payload['data'].get('ticket_text', '') or payload['data'].get('texto_chamado', '')
+        os_id = os_id or payload['data'].get('os_id') or payload['data'].get('id')
 
-        # Processamento
-        processed_tasks = process_triage(entities)
+    # Falha se não houver texto
+    if not ticket_text or not isinstance(ticket_text, str) or ticket_text.strip() == '':
+        return jsonify({'error': 'Campo ticket_text (texto do chamado) é obrigatório'}), 400
 
-        # Retorna o primeiro resultado para o n8n
-        return jsonify(processed_tasks[0]), 200
+    # Normaliza e usa Panda para estruturar antes da lógica
+    df = pd.DataFrame([{'os_id': os_id, 'ticket_text': ticket_text}])
 
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    severity, confidence = classify_severity(df.loc[0, 'ticket_text'])
+    action = suggest_action(severity, df.loc[0, 'ticket_text'])
+
+    response = {
+        'os_id': os_id,
+        'ticket_text': df.loc[0, 'ticket_text'],
+        'severity': severity,
+        'confidence': round(confidence, 4),
+        'suggested_action': action,
+        'note': 'Classificação automática pronta para n8n / AUVO'  # meta
+    }
+
+    return jsonify(response), 200
+
 
 if __name__ == '__main__':
-    print("Iniciando Agente AILA na porta 5000...")
+    print('Iniciando AILA Triage (Flask) na porta 5000...')
     app.run(debug=True, host='0.0.0.0', port=5000)
