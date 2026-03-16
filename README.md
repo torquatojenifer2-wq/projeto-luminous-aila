@@ -1,143 +1,162 @@
-# 🚀 Agente AILA - Triagem Inteligente (Luminus)
+# Agente AILA
 
-Este projeto é uma **Prova de Conceito (POC)** desenvolvida para a **Luminus**, focada na automação e triagem inteligente de Ordens de Serviço (OS) do sistema AUVO.
+Triagem inteligente de chamados para operacoes tecnicas da Luminus Energia & Engenharia.
 
-## 🛠️ Tecnologias Utilizadas
-- **Python (Flask)**: Core da inteligência de triagem.
-- **Pandas**: Manipulação estruturada de dados.
-- **scikit-learn**: Classificação ML (TF-IDF + LogisticRegression).
-- **n8n**: Orquestração de fluxos e integração.
-- **AUVO**: Fonte de dados via Webhook.
-- **WhatsApp**: Notificações em tempo real.
-- **Lovable**: Dashboard de monitoramento (PWA).
+## Visao Geral
 
-## 🧠 Como funciona?
-O sistema recebe os dados do AUVO via n8n, processa o texto do chamado e:
-1. **Classifica severidade**: Low → Resolução Remota | Medium → Visita Agendada | High → Visita Emergencial
-2. **Retorna JSON estruturado** para atualizar a OS no AUVO ou notificar via WhatsApp
+O **Agente AILA** e um MVP focado em automatizar a triagem inicial de Ordens de Servico (OS) vindas do AUVO.
 
-## 📊 Impacto Esperado
-Redução de **20%** nos deslocamentos técnicos desnecessários, otimizando o custo operacional da empresa.
+Objetivo principal:
+- Reduzir visitas tecnicas desnecessarias.
+- Acelerar o tempo de resposta ao cliente.
+- Apoiar o time operacional com recomendacoes automáticas.
 
----
+A API recebe o texto do chamado, classifica a severidade e retorna uma sugestao de acao.
 
-## 🚀 Quick Start
+## Beneficios de Negocio
 
-### Instalação
-```bash
-pip install flask pandas scikit-learn
+- Menos deslocamentos para casos resolviveis remotamente.
+- Priorizacao rapida de chamados criticos.
+- Padronizacao da triagem no fluxo operacional.
+- Integracao simples com n8n e sistemas externos.
+
+## Classificacao e Acao Sugerida
+
+| Severidade | Acao sugerida |
+|---|---|
+| `Low` | `Resolucao Remota` |
+| `Medium` | `Visita Agendada` |
+| `High` | `Visita Emergencial` |
+
+## Arquitetura (Resumo)
+
+1. O chamado e aberto no AUVO.
+2. O n8n captura a OS e envia os dados para a API AILA.
+3. A API classifica a severidade com modelo de Machine Learning.
+4. A resposta retorna para o fluxo de automacao (atualizacao de status, notificacoes, etc.).
+
+## Stack Tecnologica
+
+| Tecnologia | Uso no projeto |
+|---|---|
+| Python 3.11 | Linguagem principal |
+| Flask | API HTTP |
+| scikit-learn | Classificacao de severidade |
+| pandas | Estruturacao e manipulacao dos dados |
+| n8n | Orquestracao de automacoes |
+
+## Estrutura do Projeto
+
+```text
+projeto-luminous-aila/
+	aila_triage.py       # API Flask (endpoints /triage, /health, /test)
+	train_model.py       # Script de treino/evolucao do modelo
+	test_api.py          # Testes de payload para validar integracao
+	sample_data.csv      # Dados de exemplo
+	requirements.txt     # Dependencias Python
+	DEPLOYMENT.md        # Guia de deploy local, Docker e servidor
+	N8N_SETUP.md         # Guia de integracao com n8n
 ```
 
-### Rodar a API
+## Como Executar Localmente
+
+### 1. Pre-requisitos
+
+- Python 3.11+
+- `pip`
+
+### 2. Instalar dependencias
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### 3. Subir a API
+
 ```bash
 python aila_triage.py
 ```
 
-### Testar localmente
+API em:
+- `http://localhost:5000`
+
+## Endpoints
+
+| Metodo | Endpoint | Descricao |
+|---|---|---|
+| `POST` | `/triage` | Classifica um chamado e sugere acao |
+| `GET` ou `POST` | `/health` | Health check da aplicacao |
+| `POST` | `/test` | Endpoint de debug para inspecionar payload |
+
+## Exemplo de Uso
+
+### Requisicao
+
+```bash
+curl -X POST http://localhost:5000/triage \
+	-H "Content-Type: application/json" \
+	-d '{
+		"os_id": "OS-12345",
+		"ticket_text": "Sistema parado, maquina nao inicializa."
+	}'
+```
+
+### Resposta esperada
+
+```json
+{
+	"os_id": "OS-12345",
+	"ticket_text": "Sistema parado, maquina nao inicializa.",
+	"severity": "High",
+	"confidence": 0.93,
+	"suggested_action": "Visita Emergencial",
+	"note": "Classificacao automatica pronta para n8n / AUVO"
+}
+```
+
+## Campos Aceitos no Payload
+
+O endpoint `/triage` aceita multiplos formatos comuns no n8n.
+
+Campos de texto aceitos:
+- `ticket_text`
+- `texto_chamado`
+- `texto do chamado`
+- `descricao` / `description`
+- `chamado`, `mensagem`, `text`, `texto`
+
+Campos de identificador aceitos:
+- `os_id`
+- `OS_ID`
+- `id`
+- `os`
+- `ticket_id`
+
+## Teste Rapido da API
+
+Para validar varios formatos de payload:
+
 ```bash
 python test_api.py
 ```
 
----
+## Deploy
 
-## 📡 API Endpoints
+Para opcoes de deploy (local, Docker, servidor com Supervisor/Nginx), consulte:
+- `DEPLOYMENT.md`
 
-| Endpoint | Método | Descrição |
-|----------|--------|-----------|
-| `/triage` | POST | Classifica severidade e sugere ação |
-| `/health` | GET | Health check da API |
-| `/test` | POST | Debug de payload (vê exatamente o JSON) |
+Para configuracao de automacao no n8n, consulte:
+- `N8N_SETUP.md`
 
-### Exemplo de Request:
-```json
-{
-  "os_id": "OS-12345",
-  "ticket_text": "Sistema parado, máquina não inicializa, falha crítica."
-}
-```
+## Proximos Passos
 
-### Exemplo de Response:
-```json
-{
-  "os_id": "OS-12345",
-  "ticket_text": "Sistema parado, máquina não inicializa, falha crítica.",
-  "severity": "High",
-  "confidence": 0.95,
-  "suggested_action": "Visita Emergencial",
-  "note": "Classificação automática pronta para n8n / AUVO"
-}
-```
+- Treinar com base historica real de OS.
+- Evoluir para NLP mais robusto.
+- Adicionar observabilidade e metricas de acuracia.
+- Criar dashboard de acompanhamento operacional.
 
----
+## Autor
 
-## 🔍 Debugging
-
-### Se receber erro 400 "Campo ticket_text obrigatório":
-
-**1. Teste o endpoint `/test` para ver o payload exato:**
-```bash
-curl -X POST http://localhost:5000/test \
-  -H "Content-Type: application/json" \
-  -d '{"seu_campo": "seu_valor"}'
-```
-
-**2. Verifique os logs da API:**
-```
-[TRIAGE] RAW PAYLOAD: {...}
-[TRIAGE] PARSED PAYLOAD: {...}
-[TRIAGE] Extracted os_id: XXX, ticket_text: YYY
-```
-
-**3. A API já tenta estas variações de campo automaticamente:**
-- `ticket_text`, `texto_chamado`, `texto do chamado`, `descricao`, `description`, `chamado`
-
-Se nenhum corresponder, adicione o nome exato do campo na função `triage_api()`.
-
----
-
-## 🔄 Integração com n8n
-
-No nó **HTTP Request** do n8n:
-- **URL:** `http://localhost:5000/triage`
-- **Method:** POST
-- **Headers:** `Content-Type: application/json`
-- **Body:**
-  ```json
-  {
-    "os_id": "{{ $node.AUVO.json.id }}",
-    "ticket_text": "{{ $node.AUVO.json.descricao }}"
-  }
-  ```
-
----
-
-## 📁 Estrutura do Projeto
-
-```
-projeto-luminous-aila/
-├── aila_triage.py        # API principal (Flask)
-├── test_api.py           # Script de testes com 6 formatos
-├── requirements.txt      # Dependências Python
-└── README.md             # Esta documentação
-```
-
----
-
-## ✅ Requisitos Técnicos Atendidos
-
-✅ **Pandas**: Organiza dados de entrada em DataFrame  
-✅ **scikit-learn**: Classifica severidade com ML pipeline  
-✅ **Flask**: API REST local pronta para n8n  
-✅ **JSON I/O**: Entrada flexível, saída estruturada  
-✅ **Triagem**: 3 níveis de severidade + 3 ações sugeridas  
-✅ **Pronto para produção**: Logging, testes, documentado  
-
----
-
-## 🛡️ Próximos Passos
-
-- Treinar modelo com dados históricos do AUVO
-- Deploy em container (Docker)
-- Implementar CI/CD (GitHub Actions)
-- Monitoramento com Prometheus/Sentry
-- Testes unitários (pytest)
+Projeto MVP de automacao inteligente para operacoes de campo.

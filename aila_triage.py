@@ -6,6 +6,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.exceptions import NotFittedError
 import json
 import logging
+import unicodedata
 
 # Configurar logging para diagnosticar payloads
 logging.basicConfig(level=logging.DEBUG)
@@ -13,24 +14,222 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
+SEVERITY_LEVEL = {'Baixa': 1, 'Média': 2, 'Alta': 3}
+
+# Palavras-chave para regras de severidade em texto normalizado (sem acentos).
+HIGH_HARD_KEYWORDS = {
+    'incendio': 4,
+    'fogo': 4,
+    'chamas': 4,
+    'explosao': 4,
+    'vazamento de gas': 4,
+    'choque eletrico': 4,
+    'curto circuito': 3,
+    'pessoa ferida': 5,
+    'ferido': 4,
+    'ferida': 4,
+    'acidente': 4,
+    'invasao': 4,
+    'ransomware': 4,
+    'acesso nao autorizado': 4,
+}
+
+HIGH_OPERATIONAL_KEYWORDS = {
+    'perda total de dados': 4,
+    'perda de dados': 3,
+    'sistema fora do ar': 3,
+    'parada total': 3,
+    'indisponibilidade total': 3,
+    'falha critica': 3,
+    'ambiente inteiro indisponivel': 3,
+    'risco imediato': 3,
+}
+
+MEDIUM_KEYWORDS = {
+    'erro 500': 3,
+    'erro 502': 3,
+    'erro 503': 3,
+    'timeout': 2,
+    'instavel': 2,
+    'intermitente': 2,
+    'lentidao': 2,
+    'lento': 2,
+    'degradacao': 2,
+    'degradada': 2,
+    'travando': 2,
+    'travado': 2,
+    'nao abre': 2,
+    'nao carrega': 2,
+    'nao sincroniza': 2,
+    'falhando': 2,
+    'sem acesso': 2,
+    'indisponivel': 2,
+}
+
+LOW_KEYWORDS = {
+    'duvida': 2,
+    'como': 1,
+    'orientacao': 2,
+    'documentacao': 2,
+    'treinamento': 2,
+    'ajuste': 2,
+    'melhoria': 2,
+    'solicitacao': 1,
+    'senha': 2,
+    'login': 2,
+    'configurar': 2,
+    'cadastro': 1,
+    'icone': 1,
+}
+
+HIGH_MODIFIERS = {'urgente': 1, 'critico': 2, 'critica': 2, 'emergencia': 2}
+
+
+def _normalize_text(text):
+    if not isinstance(text, str):
+        return ''
+    lowered = text.strip().lower()
+    normalized = unicodedata.normalize('NFKD', lowered)
+    return ''.join(ch for ch in normalized if not unicodedata.combining(ch))
+
+
+def _keyword_score(text, keyword_weights):
+    score = 0
+    matches = []
+    for keyword, weight in keyword_weights.items():
+        if keyword in text:
+            score += weight
+            matches.append(keyword)
+    return score, matches
+
+
+def _rule_based_severity(ticket_text):
+    normalized = _normalize_text(ticket_text)
+    if not normalized:
+        return None, 0.0
+
+    high_hard_score, high_hard_matches = _keyword_score(normalized, HIGH_HARD_KEYWORDS)
+    high_operational_score, _ = _keyword_score(normalized, HIGH_OPERATIONAL_KEYWORDS)
+    medium_score, medium_matches = _keyword_score(normalized, MEDIUM_KEYWORDS)
+    low_score, low_matches = _keyword_score(normalized, LOW_KEYWORDS)
+    high_modifier_score, _ = _keyword_score(normalized, HIGH_MODIFIERS)
+
+    high_score = high_hard_score + high_operational_score + high_modifier_score
+
+    # Se detectar risco físico/segurança explícito, sempre classifica como alta.
+    if high_hard_matches:
+        return 'Alta', 0.97
+
+    if high_score >= 5 and high_score >= (medium_score + 2):
+        return 'Alta', 0.90
+
+    if medium_score >= 3 and medium_score >= (low_score + 1):
+        return 'Média', 0.84
+
+    if low_score >= 2 and high_score == 0 and medium_score <= 1 and low_matches:
+        return 'Baixa', 0.89
+
+    return None, 0.0
+
+
+def _blend_predictions(rule_label, rule_confidence, model_label, model_confidence):
+    if rule_label is None:
+        return model_label, model_confidence
+
+    if model_label is None:
+        return rule_label, rule_confidence
+
+    if rule_label == model_label:
+        return rule_label, min(0.99, max(rule_confidence, model_confidence))
+
+    if model_confidence < 0.60:
+        return rule_label, max(rule_confidence, 0.72)
+
+    rule_level = SEVERITY_LEVEL.get(rule_label, 2)
+    model_level = SEVERITY_LEVEL.get(model_label, 2)
+
+    if abs(rule_level - model_level) >= 2 and rule_confidence >= 0.85:
+        return rule_label, rule_confidence
+
+    if model_confidence >= 0.80:
+        return model_label, model_confidence
+
+    if rule_confidence >= (model_confidence + 0.08):
+        return rule_label, rule_confidence
+
+    return model_label, max(0.55, model_confidence * 0.92)
+
 # Modelo de triagem (exemplo simples, pode adaptar para treino real em AUVO)
 def build_severity_model():
-    # Dataset de exemplo para demonstrar a pipeline
+    # Dataset sintético expandido para reduzir confusão entre baixa/média/alta.
     sample_data = [
-        ('Sistema parado, máquina não inicializa, indisponibilidade total', 'High'),
-        ('Falha crítica de equipamento, emergência', 'High'),
-        ('Erro 500 no dashboard, não consigo acessar', 'Medium'),
-        ('Relatório lento e com timeout intermitente', 'Medium'),
-        ('Dúvida no uso da funcionalidade, orientação de senha', 'Low'),
-        ('Solicitação de ajuste em layout de campo', 'Low'),
+        # ALTA - Emergências, riscos de segurança e indisponibilidade crítica
+        ('Pegou fogo no ar-condicionado!!!', 'Alta'),
+        ('Incêndio no equipamento, chamas visíveis', 'Alta'),
+        ('Vazamento de gás, risco de explosão', 'Alta'),
+        ('Pessoa ferida, chamada de emergência', 'Alta'),
+        ('Sistema crítico parado, perda total de dados', 'Alta'),
+        ('Máquina não inicializa, indisponibilidade total', 'Alta'),
+        ('Falha crítica de equipamento, emergência', 'Alta'),
+        ('Derramamento elétrico, risco imediato', 'Alta'),
+        ('Falha de segurança, acesso não autorizado detectado', 'Alta'),
+        ('Servidor principal fora do ar para toda operação', 'Alta'),
+        ('Ataque detectado com possível invasão no ambiente', 'Alta'),
+        ('Ransomware bloqueou arquivos da empresa', 'Alta'),
+        ('Banco de dados corrompido com perda de dados', 'Alta'),
+        ('Parada total no sistema de produção', 'Alta'),
+        ('Explosão no nobreak durante operação', 'Alta'),
+        ('Curto circuito em equipamento crítico', 'Alta'),
+        
+        # MÉDIA - Problemas operacionais significativos
+        ('Erro 500 no dashboard, não consigo acessar', 'Média'),
+        ('Relatório lento e com timeout intermitente', 'Média'),
+        ('Conexão instável com servidor, queda esporádica', 'Média'),
+        ('Performance degradada, respostas lentas', 'Média'),
+        ('Sincronização com backup falhando', 'Média'),
+        ('Aplicação travando ao salvar cadastro', 'Média'),
+        ('Erro ao gerar relatório mensal', 'Média'),
+        ('Sistema não carrega em alguns horários', 'Média'),
+        ('API retornando erro 503 intermitente', 'Média'),
+        ('Lentidão ao consultar pedidos no painel', 'Média'),
+        ('Integração com ERP está falhando desde ontem', 'Média'),
+        ('Usuários sem acesso ao módulo financeiro', 'Média'),
+        ('Timeout ao sincronizar dados de clientes', 'Média'),
+        ('Queda parcial no serviço de autenticação', 'Média'),
+        
+        # BAIXA - Dúvidas, ajustes, suporte administrativo
+        ('Dúvida no uso da funcionalidade, orientação de senha', 'Baixa'),
+        ('Solicitação de ajuste em layout de campo', 'Baixa'),
+        ('Dúvida sobre procedimento de login', 'Baixa'),
+        ('Como resetar minha senha?', 'Baixa'),
+        ('Preciso de documentação sobre o recurso X', 'Baixa'),
+        ('Solicitação de melhoria no nome do botão', 'Baixa'),
+        ('Como configurar assinatura no sistema?', 'Baixa'),
+        ('Ajuda para cadastrar um novo usuário', 'Baixa'),
+        ('Pedido de treinamento para equipe nova', 'Baixa'),
+        ('Ajustar ícone na tela inicial', 'Baixa'),
+        ('Dúvida sobre regra de negócio no relatório', 'Baixa'),
+        ('Solicito atualização de texto em campo informativo', 'Baixa'),
+        ('Orientação para troca de senha de acesso', 'Baixa'),
+        ('Pedido de documentação técnica atualizada', 'Baixa'),
     ]
 
     df = pd.DataFrame(sample_data, columns=['ticket_text', 'severity'])
 
     pipeline = Pipeline([
-    ('tfidf', TfidfVectorizer(stop_words=None)),
-    ('clf', LogisticRegression(max_iter=300, random_state=42))
-])
+        ('tfidf', TfidfVectorizer(
+            strip_accents='unicode',
+            lowercase=True,
+            ngram_range=(1, 2),
+            sublinear_tf=True,
+        )),
+        ('clf', LogisticRegression(
+            max_iter=1200,
+            class_weight='balanced',
+            random_state=42,
+            C=2.0,
+        ))
+    ])
 
     pipeline.fit(df['ticket_text'], df['severity'])
     return pipeline
@@ -39,45 +238,56 @@ severity_model = build_severity_model()
 
 
 def classify_severity(ticket_text):
-    """Classifica severidade do ticket usando sklearn + pandas."""
+    """Classifica severidade com abordagem hibrida (regras + sklearn)."""
     if not isinstance(ticket_text, str) or ticket_text.strip() == '':
-        return 'Low', 0.0
+        return 'Baixa', 0.0
+
+    rule_label, rule_confidence = _rule_based_severity(ticket_text)
+
+    model_label = None
+    model_confidence = 0.0
 
     try:
         pred = severity_model.predict([ticket_text])[0]
         probs = severity_model.predict_proba([ticket_text])[0]
-        confidence = float(max(probs))
+        model_label = pred
+        model_confidence = float(max(probs))
     except NotFittedError:
-        # fallback rule-based
-        low_kw = ['senha', 'icone', 'ajuda', 'configurar', 'documentação']
-        high_kw = ['urgente', 'emergência', 'critico', 'parado', 'falha', 'interrompido']
-        ticket_lower = ticket_text.lower()
-        if any(w in ticket_lower for w in high_kw):
-            pred = 'High'
-        elif any(w in ticket_lower for w in low_kw):
-            pred = 'Low'
-        else:
-            pred = 'Medium'
-        confidence = 0.55
+        model_label = 'Média'
+        model_confidence = 0.55
 
-    return pred, confidence
+    final_label, final_confidence = _blend_predictions(
+        rule_label,
+        rule_confidence,
+        model_label,
+        model_confidence,
+    )
+
+    return final_label, final_confidence
 
 
 def suggest_action(severity, ticket_text):
     """Sugere ação técnica de acordo com severidade e texto do chamado."""
-    txt = ticket_text.lower() if isinstance(ticket_text, str) else ''
+    txt = _normalize_text(ticket_text)
 
-    # Regras de triagem
-    if severity == 'High':
+    # Regras de triagem por severidade - PRIORITÁRIO
+    if severity == 'Alta':
+        # SEMPRE visita emergencial/imediata para casos críticos
+        if any(kw in txt for kw in ['fogo', 'incendio', 'chamas', 'ferida', 'ferido', 'acidente', 'vazamento', 'explosao']):
+            return 'Visita Emergencial Imediata'
         return 'Visita Emergencial'
 
-    if any(k in txt for k in ['senha', 'login', 'configurar', 'acesso', 'documentação', 'ajuda']):
-        return 'Resolução Remota'
+    if severity == 'Média':
+        # Sem possibilidade de resolução remota para incidentes operacionais
+        if any(kw in txt for kw in ['parado', 'falha', 'indisponível', 'down', 'travado']):
+            return 'Visita Técnica Agendada'
+        return 'Suporte Técnico Remoto'
 
-    if severity == 'Medium':
-        return 'Visita Agendada'
-
-    return 'Resolução Remota'
+    # Severidade Baixa
+    if any(k in txt for k in ['senha', 'login', 'configurar', 'acesso', 'como', 'dúvida', 'ajuda', 'documentação']):
+        return 'Suporte Remoto (Chat / Telefone)'
+    
+    return 'Suporte Remoto'
 
 
 def _get_field_from_payload(payload, keys):
@@ -175,8 +385,11 @@ def _collect_possible_payloads(raw_data, parsed_json):
     return expanded
 
 
+# Endpoint para receber do n8n
 @app.route('/triage', methods=['POST'])
-def triage_api():
+@app.route('/', defaults={'path': ''}, methods=['POST'])
+@app.route('/<path:path>', methods=['POST'])
+def triage_api(path=''):
     """Endpoint que recebe JSON do n8n e retorna classificação + ação."""
     # Log completo do payload para diagnosticar
     raw_data = request.get_data(as_text=True)
@@ -192,6 +405,9 @@ def triage_api():
     os_id = None
     ticket_text = None
     text_keys = [
+        'orientation',  # <--- ADICIONE ESTE (Campo principal do Auvo)
+        'ticket_text',
+        'texto_chamado',
         'ticket_text',
         'texto_chamado',
         'texto do chamado',
@@ -252,7 +468,8 @@ def triage_api():
         'severity': severity,
         'confidence': round(confidence, 4),
         'suggested_action': action,
-        'note': 'Classificação automática pronta para n8n / AUVO'  # meta
+        'note': 'Classificação automática pronta para n8n / AUVO',
+        'message_formatted': f"🚨 *ALERTA AILA: Triagem Concluída* 🚨\n\n*ID da Tarefa:* {os_id}\n*Gravidade:* {severity}\n*Ação Sugerida:* {action}"
     }
 
     logger.info(f"[TRIAGE] Response: {json.dumps(response, indent=2, ensure_ascii=False)}")

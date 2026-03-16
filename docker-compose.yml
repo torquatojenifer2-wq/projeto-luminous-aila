@@ -1,0 +1,9 @@
+services:
+  aila-agent:
+    build: .
+    container_name: aila_triage_container
+    ports:
+      - "5000:5000"
+    restart: always
+    environment:
+      - PYTHONUNBUFFERED=1

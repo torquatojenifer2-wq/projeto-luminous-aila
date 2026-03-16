@@ -1,0 +1,12 @@
+{
+  "body": {
+    "entities": [
+      {
+        "taskID": "{{ $json.body.entities[0].taskID }}",
+        "os_id": "{{ $json.body.entities[0].taskID }}",
+        "ticket_text": "{{ $json.body.entities[0].orientation }}",
+        "orientation": "{{ $json.body.entities[0].ticketTitle }} - {{ $json.body.entities[0].externalId }}"
+      }
+    ]
+  }
+}
